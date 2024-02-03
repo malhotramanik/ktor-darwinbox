@@ -1,10 +1,14 @@
 package com.example.routes
 
+import com.example.data.employeeDao
 import com.example.model.Employee
 import com.example.model.ManagerResponse
 import com.example.model.UpdateManagerRequest
 import com.example.model.employeeStorage
 import io.ktor.http.*
+import io.ktor.http.HttpStatusCode.Companion.Accepted
+import io.ktor.http.HttpStatusCode.Companion.NotFound
+import io.ktor.http.HttpStatusCode.Companion.OK
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -14,8 +18,18 @@ fun Route.employeeRouting() {
 
   route("employee/") {
     get {
-      if (employeeStorage.isNotEmpty()) call.respond(employeeStorage)
-      else call.respondText("No employee found", status = HttpStatusCode.OK)
+      employeeDao.employee().let {
+        if (it.isEmpty())
+          return@let call.respond(OK, "No employee found")
+
+        call.respond(employeeDao.employee())
+      }
+    }
+
+    delete {
+      employeeDao.deleteAllEmployees().let {
+        call.respond(OK, "Done")
+      }
     }
 
     get("{id?}") {
@@ -25,20 +39,29 @@ fun Route.employeeRouting() {
           status = HttpStatusCode.BadRequest
         )
 
-      val employee = employeeStorage.find { it.id == employeeId }
-        ?: return@get call.respondText(
+      val employee = employeeDao.employee(employeeId)
+        ?: return@get call.respond(
+          status = NotFound,
           "No employee with id $employeeId",
-          status = HttpStatusCode.NotFound
         )
       call.respond(employee)
     }
 
-    post("add/") {
+    post {
       val employee = call.receive<Employee>()
-      employeeStorage.add(employee)
-      call.respondText(
-        "Employee Added Successfully",
-        status = HttpStatusCode.Created
+      employeeDao.addEmployee(employee)
+      call.respond(
+        HttpStatusCode.Created,
+        "Employee Added Successfully"
+      )
+    }
+
+     put {
+      val employee = call.receive<Employee>()
+      employeeDao.update(employee)
+      call.respond(
+        Accepted,
+        "Employee Updated Successfully"
       )
     }
 
@@ -49,73 +72,25 @@ fun Route.employeeRouting() {
           status = HttpStatusCode.BadRequest
         )
 
-      employeeStorage.replaceAll { employee ->
-        if (employee.managerId == employeeId) employee.copy(managerId = null)
-        else
-          employee
-      }
-
-      val isRemoved = employeeStorage.removeIf { it.id == employeeId }
-      if (isRemoved) {
-        call.respondText(
-          "Customer removed correctly",
-          status = HttpStatusCode.Accepted
-        )
-      } else {
-        call.respondText("Employee Not Found", status = HttpStatusCode.NotFound)
-      }
+      val isRemoved = employeeDao.delete(employeeId)
+      if (isRemoved) call.respond(Accepted, "Customer removed correctly")
+      else call.respond(NotFound, "Employee Not Found")
     }
 
-    post("updatemanager/") {
+    put ("manager/") {
       val request = call.receive<UpdateManagerRequest>()
 
-      val manager =
-        employeeStorage.find { it.id == request.managerId }
-      val employee =
-        employeeStorage.find { it.id == request.employeeId }
-
-      if (manager == null)
-        return@post call.respondText(
-          "Manager is not found",
-          status = HttpStatusCode.BadRequest
-        )
-
-
-      if (employee == null)
-        return@post call.respondText(
-          "Employee is not found",
-          status = HttpStatusCode.BadRequest
-        )
-
-      employeeStorage.replaceAll {
-        if (it.id == request.employeeId) it.copy(managerId = request.managerId) else it
-      }
-
-      call.respondText(
-        "${employee.name} mapped to ${manager.name}",
-        status = HttpStatusCode.OK
-      )
+      employeeDao.updateManager(request.employeeId, request.managerId)
+      call.respond(OK, "${request.employeeId} mapped to ${request.managerId}")
     }
 
-    post ("manager/{id?}"){
+    get("manager/{id?}") {
       val managerId =
-        call.parameters["id"]?.toInt() ?: return@post call.respondText(
+        call.parameters["id"]?.toInt() ?: return@get call.respondText(
           "Missing Manager id",
           status = HttpStatusCode.BadRequest
         )
-
-      val manager =
-        employeeStorage.find { it.id == managerId }
-          ?: return@post call.respondText(
-            "Manager is not found",
-            status = HttpStatusCode.BadRequest
-          )
-
-      val reportees = employeeStorage.filter { it.managerId == managerId }
-
-      call.respond(
-        ManagerResponse(detail = manager, reportees = reportees)
-      )
+      call.respond(employeeDao.manager(managerId))
     }
   }
 }
