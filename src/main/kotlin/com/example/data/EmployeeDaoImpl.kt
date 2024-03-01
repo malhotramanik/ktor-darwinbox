@@ -87,6 +87,6 @@ class EmployeeDaoImpl : EmployeeDao {
 val employeeDao = EmployeeDaoImpl().also { dao ->
   CoroutineScope(Dispatchers.IO).launch{
     if (dao.employee().isEmpty())
-      repeat(10_000) { dao.addEmployee(EmployeeDM(it, "Manik-$it")) }
+      repeat(10) { dao.addEmployee(EmployeeDM(it, "Manik-$it")) }
   }
 }
